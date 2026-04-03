@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OCT CNV Analyzer</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;700&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #080c12;
+      --surface: #0d1117;
+      --border: rgba(255,255,255,0.07);
+      --text: #c9d4e0;
+      --muted: #556677;
+      --success: #00d084;
+      --partial: #f0a500;
+      --failure: #ff4757;
+      --accent: #0070f3;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      padding: 28px 32px;
+    }
+
+    /* HEADER */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .header-left { display: flex; align-items: center; gap: 16px; }
+    .logo {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, var(--success), var(--accent));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; color: #fff; flex-shrink: 0;
+    }
+    h1 { font-size: 20px; font-weight: 700; color: #e8f0fe; letter-spacing: -0.3px; }
+    .subtitle { font-size: 11px; color: var(--muted); letter-spacing: 0.5px; margin-top: 3px; }
+
+    .header-actions { display: flex; gap: 10px; }
+    .btn-export, .btn-clear {
+      padding: 8px 18px; border-radius: 8px; cursor: pointer;
+      font-size: 12px; font-family: inherit; font-weight: 600;
+      transition: opacity 0.2s;
+    }
+    .btn-export {
+      border: 1px solid rgba(0,208,132,0.4);
+      background: rgba(0,208,132,0.1); color: var(--success);
+    }
+    .btn-export:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-clear {
+      border: 1px solid var(--border);
+      background: transparent; color: var(--muted);
+    }
+    .header-actions.hidden { display: none; }
+
+    /* STATS */
+    .stats-bar {
+      display: flex; gap: 24px;
+      padding: 14px 20px;
+      background: rgba(255,255,255,0.03);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+    .stats-bar.hidden { display: none; }
+    .stat-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .stat-value { font-size: 22px; font-weight: 700; line-height: 1; font-family: 'DM Mono', monospace; }
+    .stat-label { font-size: 10px; color: var(--muted); letter-spacing: 0.5px; }
+
+    /* DROP ZONE */
+    .drop-zone {
+      border: 2px dashed rgba(255,255,255,0.1);
+      border-radius: 14px; padding: 40px 24px;
+      text-align: center; cursor: pointer;
+      transition: all 0.2s ease;
+      margin-bottom: 28px;
+      background: rgba(255,255,255,0.02);
+    }
+    .drop-zone:hover, .drop-zone.active {
+      border-color: rgba(0,208,132,0.6);
+      background: rgba(0,208,132,0.05);
+    }
+    .drop-icon { font-size: 36px; color: #334455; margin-bottom: 10px; }
+    .drop-text { font-size: 14px; color: #8899aa; margin-bottom: 6px; }
+    .drop-hint { font-size: 11px; color: var(--muted); }
+
+    /* GRID */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 18px;
+    }
+
+    /* CARD */
+    .card {
+      position: relative;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px; overflow: hidden;
+      transition: border-color 0.3s ease;
+    }
+    .card.success { border-color: rgba(0,208,132,0.35); background: linear-gradient(145deg, #0d1117, rgba(0,208,132,0.08)); }
+    .card.partial { border-color: rgba(240,165,0,0.35); background: linear-gradient(145deg, #0d1117, rgba(240,165,0,0.08)); }
+    .card.failure { border-color: rgba(255,71,87,0.35); background: linear-gradient(145deg, #0d1117, rgba(255,71,87,0.08)); }
+
+    .remove-btn {
+      position: absolute; top: 10px; right: 10px; z-index: 10;
+      width: 24px; height: 24px; border-radius: 50%;
+      border: none; background: rgba(0,0,0,0.6);
+      color: #889; cursor: pointer; font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .image-wrap { position: relative; width: 100%; height: 180px; overflow: hidden; }
+    .card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    .overlay {
+      position: absolute; inset: 0;
+      background: rgba(8,12,18,0.75);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 10px;
+    }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 2px solid rgba(255,255,255,0.1);
+      border-top: 2px solid var(--success);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .overlay-text { font-size: 12px; color: #889; }
+
+    .badge {
+      position: absolute; bottom: 10px; left: 10px;
+      padding: 4px 10px; border-radius: 6px;
+      font-size: 11px; font-weight: 700; color: #fff;
+    }
+    .badge.success { background: var(--success); }
+    .badge.partial { background: var(--partial); }
+    .badge.failure { background: var(--failure); }
+
+    .card-body { padding: 14px 16px 16px; }
+    .file-name {
+      font-size: 11px; color: var(--muted);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      margin-bottom: 10px; font-family: 'DM Mono', monospace;
+    }
+    .analyzing-text { font-size: 12px; color: #60a5fa; }
+    .error-text { font-size: 12px; color: var(--failure); }
+
+    .result-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .classification { font-size: 13px; font-weight: 700; }
+    .classification.success { color: var(--success); }
+    .classification.partial { color: var(--partial); }
+    .classification.failure { color: var(--failure); }
+    .confidence { font-size: 10px; color: var(--muted); }
+
+    .findings { margin-bottom: 10px; }
+    .finding-item {
+      font-size: 11px; color: #8899aa; line-height: 1.6;
+      display: flex; align-items: flex-start;
+    }
+    .finding-bullet { margin-right: 6px; font-size: 10px; flex-shrink: 0; }
+
+    .recommendation {
+      padding: 8px 10px; border-radius: 7px;
+      border: 1px solid var(--border);
+      font-size: 11px; color: #aabbcc; line-height: 1.5;
+    }
+    .rec-label { font-weight: 700; margin-right: 4px; }
+
+    /* EMPTY */
+    .empty-state { text-align: center; padding: 40px 0; }
+    .empty-text { color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">◎</div>
+      <div>
+        <h1>OCT CNV Analyzer</h1>
+        <div class="subtitle">Laser-Induced Choroidal Neovascularization · Bruch's Membrane Assessment</div>
+      </div>
+    </div>
+    <div class="header-actions hidden" id="headerActions">
+      <button class="btn-export" id="btnExport" disabled onclick="exportCSV()">↓ 匯出 CSV</button>
+      <button class="btn-clear" onclick="clearAll()">清除全部</button>
+    </div>
+  </div>
+
+  <div class="stats-bar hidden" id="statsBar">
+    <div class="stat-item"><span class="stat-value" id="statTotal" style="color:#8899aa">0</span><span class="stat-label">總計</span></div>
+    <div class="stat-item"><span class="stat-value" id="statAnalyzing" style="color:#60a5fa">0</span><span class="stat-label">分析中</span></div>
+    <div class="stat-item"><span class="stat-value" id="statSuccess" style="color:#00d084">0</span><span class="stat-label">成功</span></div>
+    <div class="stat-item"><span class="stat-value" id="statPartial" style="color:#f0a500">0</span><span class="stat-label">部分</span></div>
+    <div class="stat-item"><span class="stat-value" id="statFailure" style="color:#ff4757">0</span><span class="stat-label">失敗</span></div>
+  </div>
+
+  <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+    <input type="file" id="fileInput" accept="image/*" multiple style="display:none" onchange="handleFiles(this.files)">
+    <div class="drop-icon">⊕</div>
+    <p class="drop-text">拖曳 OCT 影像至此，或點擊選擇檔案</p>
+    <p class="drop-hint">支援 PNG · JPG · TIFF · 可一次上傳多張</p>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="empty-state" id="emptyState">
+    <p class="empty-text">上傳 OCT 影像後，AI 將自動判讀 Bruch's membrane 破裂狀態</p>
+  </div>
+
+  <script>
+    const images = [];
+
+    const STATUS = {
+      SUCCESS: { label: '成功', labelEn: 'Successful Rupture', cls: 'success', icon: '✓' },
+      PARTIAL: { label: '部分破裂', labelEn: 'Partial Rupture', cls: 'partial', icon: '◐' },
+      FAILURE: { label: '失敗', labelEn: 'No Rupture', cls: 'failure', icon: '✗' },
+    };
+    const CONF = { HIGH: '高', MEDIUM: '中', LOW: '低' };
+
+    // Drag & drop
+    const dz = document.getElementById('dropZone');
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('active'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('active'));
+    dz.addEventListener('drop', e => {
+      e.preventDefault(); dz.classList.remove('active');
+      handleFiles(e.dataTransfer.files);
+    });
+
+    function handleFiles(files) {
+      Array.from(files).filter(f => f.type.startsWith('image/')).forEach(processFile);
+    }
+
+    function processFile(file) {
+      const id = Math.random().toString(36).slice(2);
+      const url = URL.createObjectURL(file);
+      const img = { id, file, url, name: file.name, status: 'analyzing', result: null, error: null };
+      images.push(img);
+      renderCard(img);
+      updateUI();
+
+      // Read base64
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = reader.result.split(',')[1];
+        try {
+          const res = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ base64, mediaType: file.type }),
+          });
+          const result = await res.json();
+          if (!res.ok) throw new Error(result.error || 'API error');
+          img.status = 'done';
+          img.result = result;
+        } catch (e) {
+          img.status = 'error';
+          img.error = '分析失敗：' + e.message;
+        }
+        updateCard(img);
+        updateUI();
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function renderCard(img) {
+      document.getElementById('emptyState').style.display = 'none';
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.id = 'card-' + img.id;
+      card.innerHTML = `
+        <button class="remove-btn" onclick="removeImage('${img.id}')">×</button>
+        <div class="image-wrap">
+          <img src="${img.url}" alt="${img.name}">
+          <div class="overlay" id="overlay-${img.id}">
+            <div class="spinner"></div>
+            <span class="overlay-text">分析中...</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <p class="file-name">${img.name}</p>
+          <p class="analyzing-text" id="status-${img.id}">Claude 正在判讀影像...</p>
+        </div>
+      `;
+      document.getElementById('grid').appendChild(card);
+    }
+
+    function updateCard(img) {
+      const card = document.getElementById('card-' + img.id);
+      if (!card) return;
+      const overlay = document.getElementById('overlay-' + img.id);
+      const statusEl = document.getElementById('status-' + img.id);
+
+      overlay.style.display = 'none';
+
+      if (img.status === 'error') {
+        statusEl.className = 'error-text';
+        statusEl.textContent = img.error;
+        return;
+      }
+
+      const r = img.result;
+      const cfg = STATUS[r.classification];
+      if (!cfg) return;
+
+      card.className = 'card ' + cfg.cls;
+
+      // Add badge
+      const imgWrap = card.querySelector('.image-wrap');
+      const badge = document.createElement('div');
+      badge.className = 'badge ' + cfg.cls;
+      badge.textContent = cfg.icon + ' ' + cfg.label;
+      imgWrap.appendChild(badge);
+
+      // Update body
+      const body = card.querySelector('.card-body');
+      const fileName = body.querySelector('.file-name').outerHTML;
+      const bulletColor = cfg.cls === 'success' ? '#00d084' : cfg.cls === 'partial' ? '#f0a500' : '#ff4757';
+      body.innerHTML = fileName + `
+        <div class="result-row">
+          <span class="classification ${cfg.cls}">${cfg.labelEn}</span>
+          <span class="confidence">信心度：${CONF[r.confidence] || r.confidence}</span>
+        </div>
+        <div class="findings">
+          ${r.key_findings.map(f => `
+            <div class="finding-item">
+              <span class="finding-bullet" style="color:${bulletColor}">▸</span>${f}
+            </div>`).join('')}
+        </div>
+        <div class="recommendation" style="border-color:${bulletColor}33">
+          <span class="rec-label">建議：</span>${r.recommendation}
+        </div>
+      `;
+    }
+
+    function updateUI() {
+      const total = images.length;
+      const analyzing = images.filter(i => i.status === 'analyzing').length;
+      const success = images.filter(i => i.result?.classification === 'SUCCESS').length;
+      const partial = images.filter(i => i.result?.classification === 'PARTIAL').length;
+      const failure = images.filter(i => i.result?.classification === 'FAILURE').length;
+      const done = images.filter(i => i.status === 'done').length;
+
+      document.getElementById('statTotal').textContent = total;
+      document.getElementById('statAnalyzing').textContent = analyzing;
+      document.getElementById('statSuccess').textContent = success;
+      document.getElementById('statPartial').textContent = partial;
+      document.getElementById('statFailure').textContent = failure;
+
+      const show = total > 0;
+      document.getElementById('statsBar').classList.toggle('hidden', !show);
+      document.getElementById('headerActions').classList.toggle('hidden', !show);
+      document.getElementById('btnExport').disabled = done === 0;
+      document.getElementById('emptyState').style.display = total === 0 ? 'block' : 'none';
+    }
+
+    function removeImage(id) {
+      const idx = images.findIndex(i => i.id === id);
+      if (idx !== -1) images.splice(idx, 1);
+      document.getElementById('card-' + id)?.remove();
+      updateUI();
+    }
+
+    function clearAll() {
+      images.length = 0;
+      document.getElementById('grid').innerHTML = '';
+      updateUI();
+    }
+
+    function exportCSV() {
+      const done = images.filter(i => i.status === 'done');
+      if (!done.length) return;
+      const header = '檔案名稱,判讀結果,信心度,主要發現,建議';
+      const rows = done.map(i => [
+        i.name,
+        STATUS[i.result.classification]?.label || i.result.classification,
+        CONF[i.result.confidence] || i.result.confidence,
+        '"' + i.result.key_findings.join('; ') + '"',
+        '"' + i.result.recommendation + '"',
+      ].join(','));
+      const csv = '\uFEFF' + [header, ...rows].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'CNV_OCT_判讀結果_' + new Date().toISOString().slice(0,10) + '.csv';
+      a.click();
+    }
+  </script>
+</body>
+</html>
