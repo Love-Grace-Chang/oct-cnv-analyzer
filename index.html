@@ -272,12 +272,13 @@
   canvas.width = w; canvas.height = h;
   canvas.getContext('2d').drawImage(img, 0, 0, w, h);
   const compressed = canvas.toDataURL('image/jpeg', 0.85);
-  const base64 = compressed.split(',')[1];
+const base64 = compressed.split(',')[1];
+const resolvedMediaType = 'image/jpeg';
         try {
           const res = await fetch('/api/analyze', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ base64, mediaType: file.type }),
+            body: JSON.stringify({ base64, mediaType: resolvedMediaType }),
           });
           const result = await res.json();
           if (!res.ok) throw new Error(result.error || 'API error');
