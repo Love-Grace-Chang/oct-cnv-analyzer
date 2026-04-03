@@ -258,7 +258,21 @@
       // Read base64
       const reader = new FileReader();
       reader.onload = async () => {
-        const base64 = reader.result.split(',')[1];
+  // Compress image before sending
+  const img = new Image();
+  img.src = reader.result;
+  await new Promise(r => img.onload = r);
+  const canvas = document.createElement('canvas');
+  const MAX = 1024;
+  let w = img.width, h = img.height;
+  if (w > MAX || h > MAX) {
+    if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+    else { w = Math.round(w * MAX / h); h = MAX; }
+  }
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+  const compressed = canvas.toDataURL('image/jpeg', 0.85);
+  const base64 = compressed.split(',')[1];
         try {
           const res = await fetch('/api/analyze', {
             method: 'POST',
